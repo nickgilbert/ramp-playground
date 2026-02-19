@@ -316,7 +316,7 @@ export default function RampPlayground() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 20 }}>
           <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20,
             borderTop: `3px solid ${C.green}`, textAlign: "center" }}>
-            <div style={{ fontSize: 9.5, color: C.dim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Net Savings via Stellar</div>
+            <div style={{ fontSize: 9.5, color: C.dim, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Net Margin via Stellar</div>
             <div style={{ fontSize: 32, fontWeight: 900, fontFamily: "monospace", lineHeight: 1.2,
               color: calc.netSavings > 0 ? C.green : C.red }}>
               {calc.netSavings >= 0 ? "+" : ""}{fmtD(calc.netSavings)}
