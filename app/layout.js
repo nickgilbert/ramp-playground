@@ -1,7 +1,7 @@
 export const metadata = {
-  title: "Ramp Economics Playground",
+  title: "Stellar Ramp Economics Calculator",
   description:
-    "Compare on/off-ramp economics: Traditional MXN→USDC vs Stellar-optimized MXN→CETES→USDC path",
+    "Interactive simulation comparing Traditional vs Stellar-optimized on/off-ramp unit economics, risk profiles, and profitability",
 };
 
 export default function RootLayout({ children }) {
