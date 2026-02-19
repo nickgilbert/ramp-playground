@@ -26,7 +26,7 @@ const CONFIDENCE_Z = 1.645;
 const DEFAULTS = {
   avgTicket: 25, monthlyVolume: 10000000, rebalFreq: 4,
   mxnVol: 12, rebalDuration: 48, cetesYield: 7,
-  bankWireFee: 35, localWireFee: 0.25, dexSpread: 8,
+  bankWireFee: 35, tradSpread: 30, localWireFee: 0.25, dexSpread: 8,
 };
 
 const PRESETS = {
@@ -178,11 +178,16 @@ export default function RampPlayground() {
 
   // Fee Assumptions
   const [bankWireFee, setBankWireFee] = useState(DEFAULTS.bankWireFee);
+  const [tradSpread, setTradSpread] = useState(DEFAULTS.tradSpread);
   const [localWireFee, setLocalWireFee] = useState(DEFAULTS.localWireFee);
   const [dexSpread, setDexSpread] = useState(DEFAULTS.dexSpread);
 
   // Preset state
   const [activePreset, setActivePreset] = useState(null);
+
+  // Widget
+  const [midRate, setMidRate] = useState(17.2);
+  const [sendAmount, setSendAmount] = useState(1000);
 
   // ── Preset logic ─────────────────────────────────────────
   const applyPreset = (key) => {
@@ -194,6 +199,7 @@ export default function RampPlayground() {
       setRebalDuration(DEFAULTS.rebalDuration);
       setCetesYield(DEFAULTS.cetesYield);
       setBankWireFee(DEFAULTS.bankWireFee);
+      setTradSpread(DEFAULTS.tradSpread);
       setLocalWireFee(DEFAULTS.localWireFee);
       setDexSpread(DEFAULTS.dexSpread);
       setActivePreset(null);
@@ -212,7 +218,7 @@ export default function RampPlayground() {
     const txCount = monthlyVolume / avgTicket;
 
     // ═══ TRADITIONAL PATH ═══
-    const trad_directCosts = bankWireFee * rebalFreq;
+    const trad_directCosts = bankWireFee * rebalFreq + (tradSpread / 10000) * monthlyVolume;
     const trad_capitalCost = inventoryAmount * (cetesYield / 100) / 12;
     const durationYearFrac = rebalDuration / 8760;
     const trad_volRisk = inventoryAmount * (mxnVol / 100) * Math.sqrt(durationYearFrac) * CONFIDENCE_Z;
@@ -258,7 +264,7 @@ export default function RampPlayground() {
     // ═══ CHART DATA: Sensitivity (Duration → Required Fee %) ═══
     const sensitivityData = [];
     for (let dur = 1; dur <= 168; dur += 1) {
-      const vTrad_direct = bankWireFee * rebalFreq;
+      const vTrad_direct = bankWireFee * rebalFreq + (tradSpread / 10000) * monthlyVolume;
       const vTrad_capital = inventoryAmount * (cetesYield / 100) / 12;
       const vTrad_risk = inventoryAmount * (mxnVol / 100) * Math.sqrt(dur / 8760) * CONFIDENCE_Z;
       const vTrad_total = vTrad_direct + vTrad_capital + vTrad_risk;
@@ -278,7 +284,7 @@ export default function RampPlayground() {
       netSavings, netMarginPerTx, netMarginPct, riskReductionPct,
       costPer100Data, sensitivityData,
     };
-  }, [avgTicket, monthlyVolume, rebalFreq, mxnVol, rebalDuration, cetesYield, bankWireFee, localWireFee, dexSpread]);
+  }, [avgTicket, monthlyVolume, rebalFreq, mxnVol, rebalDuration, cetesYield, bankWireFee, tradSpread, localWireFee, dexSpread]);
 
   const gaugeMax = Math.max(10, Math.ceil(calc.netMarginPerTx * 1.5));
   const gaugeMin = Math.min(-5, Math.floor(calc.netMarginPerTx * 0.5));
@@ -311,6 +317,132 @@ export default function RampPlayground() {
             with same-denomination rebalancing and atomic swaps (MXN → CETES:Stellar → DEX → USDC).
           </p>
         </div>
+
+        {/* ── Customer-Facing Widget ── */}
+        {(() => {
+          // Traditional: pass cost per $100 as rate markup (worse rate for customer)
+          const tradCostPct = calc.per100.trad.total / 100; // e.g. 0.003 = 0.3%
+          const stellarCostPct = Math.max(0, calc.per100.stellar.total) / 100;
+          // Traditional rate: mid rate minus the markup baked in
+          const tradRate = midRate * (1 - tradCostPct);
+          // Stellar rate: all margin savings passed to user, so only stellar costs deducted
+          const stellarRate = midRate * (1 - stellarCostPct);
+          const tradReceives = sendAmount * tradRate;
+          const stellarReceives = sendAmount * stellarRate;
+          const extraMxn = stellarReceives - tradReceives;
+
+          return (
+            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14,
+              padding: "20px 24px", marginBottom: 20, overflow: "hidden" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: C.text }}>
+                    What Your Customer Sees
+                  </h2>
+                  <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>
+                    Assuming all margin savings are passed to the end user as a better exchange rate
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                  <div>
+                    <div style={{ fontSize: 9.5, color: C.dim, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 3 }}>Send Amount (USD)</div>
+                    <input type="number" value={sendAmount} onChange={e => setSendAmount(Math.max(1, Number(e.target.value)))}
+                      style={{ width: 110, padding: "6px 10px", fontSize: 14, fontWeight: 700, fontFamily: "monospace",
+                        background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, outline: "none" }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 9.5, color: C.dim, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 3 }}>Mid-Market Rate</div>
+                    <input type="number" value={midRate} step={0.01} onChange={e => setMidRate(Math.max(0.01, Number(e.target.value)))}
+                      style={{ width: 110, padding: "6px 10px", fontSize: 14, fontWeight: 700, fontFamily: "monospace",
+                        background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, outline: "none" }} />
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                {/* Traditional Column */}
+                <div style={{ background: `${C.trad}08`, borderRadius: 12, padding: 18, border: `1px solid ${C.trad}22` }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: "50%", background: `${C.trad}22`,
+                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>🏦</div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: C.trad }}>Traditional Ramp</div>
+                      <div style={{ fontSize: 9.5, color: C.dim }}>MXN → Bank → Wire → USDC</div>
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 10, color: C.dim, marginBottom: 2 }}>Recipient gets</div>
+                    <div style={{ fontSize: 24, fontWeight: 800, fontFamily: "monospace", color: C.trad }}>
+                      {tradReceives.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0",
+                    borderTop: `1px solid ${C.border}` }}>
+                    <span style={{ fontSize: 11, color: C.dim }}>Exchange rate</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, fontFamily: "monospace", color: C.muted }}>
+                      {tradRate.toFixed(4)}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0",
+                    borderTop: `1px solid ${C.border}` }}>
+                    <span style={{ fontSize: 11, color: C.dim }}>Rate markup</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, fontFamily: "monospace", color: C.red }}>
+                      {(tradCostPct * 100).toFixed(3)}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* Stellar Column */}
+                <div style={{ background: `${C.stellar}08`, borderRadius: 12, padding: 18, border: `2px solid ${C.stellar}44`,
+                  position: "relative" }}>
+                  <div style={{ position: "absolute", top: -1, right: 16, background: C.stellar, color: C.bg,
+                    fontSize: 9, fontWeight: 800, padding: "3px 10px", borderRadius: "0 0 6px 6px",
+                    textTransform: "uppercase", letterSpacing: 1 }}>Best Rate</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: "50%", background: `${C.stellar}22`,
+                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>⚡</div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: C.stellar }}>Stellar Optimized</div>
+                      <div style={{ fontSize: 9.5, color: C.dim }}>MXN → CETES → DEX → USDC</div>
+                    </div>
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 10, color: C.dim, marginBottom: 2 }}>Recipient gets</div>
+                    <div style={{ fontSize: 24, fontWeight: 800, fontFamily: "monospace", color: C.stellar }}>
+                      {stellarReceives.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} MXN
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0",
+                    borderTop: `1px solid ${C.border}` }}>
+                    <span style={{ fontSize: 11, color: C.dim }}>Exchange rate</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, fontFamily: "monospace", color: C.muted }}>
+                      {stellarRate.toFixed(4)}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "6px 0",
+                    borderTop: `1px solid ${C.border}` }}>
+                    <span style={{ fontSize: 11, color: C.dim }}>Rate markup</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, fontFamily: "monospace", color: C.green }}>
+                      {stellarCostPct > 0 ? (stellarCostPct * 100).toFixed(3) + "%" : "0%"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Savings callout */}
+              <div style={{ marginTop: 14, padding: "10px 16px", background: `${C.green}11`, borderRadius: 10,
+                border: `1px solid ${C.green}22`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ fontSize: 12, color: C.muted }}>
+                  Customer receives <strong style={{ color: C.green }}>{extraMxn.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} more MXN</strong> with
+                  Stellar on a ${sendAmount.toLocaleString()} USD transfer
+                </div>
+                <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "monospace", color: C.green }}>
+                  +{((extraMxn / tradReceives) * 100).toFixed(2)}%
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ── KPI Cards ── */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 20 }}>
@@ -393,6 +525,9 @@ export default function RampPlayground() {
               <Slider label="Bank Wire Fee (int'l)" value={bankWireFee} onChange={setBankWireFee}
                 min={5} max={100} step={5} unit="$" color={C.trad}
                 tip="Cost per international wire for traditional rebalancing." />
+              <Slider label="Trad. Exchange Spread" value={tradSpread} onChange={setTradSpread}
+                min={5} max={100} step={1} unit="bps" color={C.trad}
+                tip="FX spread on traditional MXN→USD conversion (OTC/exchange)." />
               <Slider label="Local Wire Fee" value={localWireFee} onChange={setLocalWireFee}
                 min={0.1} max={10} step={0.05} unit="$" color={C.stellar}
                 tip="Cost per domestic wire for Stellar-optimized rebalancing." />
@@ -478,7 +613,7 @@ export default function RampPlayground() {
                   <tbody>
                     {[
                       { label: "Operational Fees", trad: calc.per100.trad.opFees, stellar: calc.per100.stellar.opFees,
-                        tradDetail: `$${bankWireFee} wire x ${rebalFreq}/mo`, stellarDetail: `${dexSpread}bps spread + $${localWireFee} wire x ${rebalFreq}/mo` },
+                        tradDetail: `$${bankWireFee} wire x ${rebalFreq}/mo + ${tradSpread}bps FX spread`, stellarDetail: `${dexSpread}bps DEX spread + $${localWireFee} wire x ${rebalFreq}/mo` },
                       { label: "Capital Costs", trad: calc.per100.trad.capitalCost, stellar: calc.per100.stellar.capitalCost,
                         tradDetail: `${fmtK(calc.inventoryAmount)} idle @ 0% deposit`, stellarDetail: `${fmtK(calc.inventoryAmount)} earning ${cetesYield}% CETES` },
                       { label: "Risk Buffer (VaR)", trad: calc.per100.trad.riskBuffer, stellar: calc.per100.stellar.riskBuffer,
